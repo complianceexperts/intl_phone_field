@@ -433,9 +433,7 @@ class _IntlPhoneFieldState extends State<IntlPhoneField> {
       validator: (value) {
         if (value == null || !isNumeric(value)) return validatorMessage;
         if (!widget.disableLengthCheck) {
-          return value.length >= _selectedCountry.minLength && value.length <= _selectedCountry.maxLength
-              ? null
-              : widget.invalidNumberMessage;
+          if (value.length < _selectedCountry.minLength || value.length > _selectedCountry.maxLength) return widget.invalidNumberMessage;
         }
 
         return validatorMessage;
