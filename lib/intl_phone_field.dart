@@ -336,6 +336,10 @@ class _IntlPhoneFieldState extends State<IntlPhoneField> {
       }
     }
 
+    if (widget.controller != null) {
+      widget.controller!.text = number;
+    }
+
     if (widget.autovalidateMode == AutovalidateMode.always) {
       final initialPhoneNumber = PhoneNumber(
         countryISOCode: _selectedCountry.code,
