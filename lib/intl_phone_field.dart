@@ -331,6 +331,7 @@ class _IntlPhoneFieldState extends State<IntlPhoneField> {
         if (countryFromNumber != null) {
           _selectedCountry = countryFromNumber;
           // remove country code from the initial number value
+          number = number.substring(1);
           number = number.replaceFirst(RegExp("^${_selectedCountry.fullCountryCode}"), "");
         }
       } catch (_) {}
