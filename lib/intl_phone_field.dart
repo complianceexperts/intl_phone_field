@@ -479,7 +479,8 @@ class _IntlPhoneFieldState extends State<IntlPhoneField> {
         widget.onChanged?.call(phoneNumber);
       },
       validator: (value) {
-        if (value == null || !isNumeric(value)) return validatorMessage;
+        if (value == null) return validatorMessage;
+        if (!isNumeric(value)) return widget.invalidNumberMessage;
         if (!widget.disableLengthCheck) {
           if (value.length < _selectedCountry.minLength || value.length > _selectedCountry.maxLength) {
             return widget.invalidNumberMessage;
