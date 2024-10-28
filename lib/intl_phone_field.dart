@@ -431,6 +431,17 @@ class _IntlPhoneFieldState extends State<IntlPhoneField> {
     return result;
   }
 
+  static String _getValidNumber(String? number, String countryCode) {
+    final result = number ?? '';
+    try {
+      final phoneUtil = PhoneNumberUtil.instance;
+      final phoneNumber = phoneUtil.parse(number, countryCode);
+      if (phoneUtil.isValidNumber(phoneNumber) && phoneNumber.hasNationalNumber()) {
+        return phoneNumber.nationalNumber.toString();
+      }
+    } catch (_) {}
+    return result;
+  }
   @override
   Widget build(BuildContext context) {
     return TextFormField(
@@ -461,7 +472,7 @@ class _IntlPhoneFieldState extends State<IntlPhoneField> {
           PhoneNumber(
             countryISOCode: _selectedCountry.code,
             countryCode: '+${_selectedCountry.dialCode}${_selectedCountry.regionCode}',
-            number: value!,
+            number: _getValidNumber(value, _selectedCountry.code),
           ),
         );
       },
@@ -469,7 +480,7 @@ class _IntlPhoneFieldState extends State<IntlPhoneField> {
         final phoneNumber = PhoneNumber(
           countryISOCode: _selectedCountry.code,
           countryCode: '+${_selectedCountry.fullCountryCode}',
-          number: value,
+          number: _getValidNumber(value, _selectedCountry.code),
         );
 
         if (widget.autovalidateMode != AutovalidateMode.disabled) {
