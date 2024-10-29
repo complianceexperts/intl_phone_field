@@ -1,6 +1,7 @@
 library intl_phone_field;
 
 import 'dart:async';
+import 'package:dlibphonenumber/phone_number_util.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -160,6 +161,9 @@ class IntlPhoneField extends StatefulWidget {
   /// Disable view Min/Max Length check
   final bool disableLengthCheck;
 
+  /// Disable phone number validation check using dlibphonenumber library
+  final bool disablePhoneNumberValidationCheck;
+
   /// Won't work if [enabled] is set to `false`.
   final bool showDropdownIcon;
 
@@ -287,6 +291,7 @@ class IntlPhoneField extends StatefulWidget {
     this.showCountryFlag = true,
     this.cursorColor,
     this.disableLengthCheck = false,
+    this.disablePhoneNumberValidationCheck = false,
     this.flagsButtonPadding = EdgeInsets.zero,
     this.invalidNumberMessage = 'Invalid Mobile Number',
     this.cursorHeight,
@@ -316,23 +321,40 @@ class _IntlPhoneFieldState extends State<IntlPhoneField> {
     _countryList = widget.countries ?? countries;
     filteredCountries = _countryList;
     number = widget.initialValue ?? '';
-    if (widget.initialCountryCode == null && number.startsWith('+')) {
-      number = number.substring(1);
-      // parse initial value
-      _selectedCountry = countries.firstWhere((country) => number.startsWith(country.fullCountryCode),
-          orElse: () => _countryList.first);
+    Country? countryFromNumber;
+    if (number.isNotEmpty && number.startsWith('+')) {
+      try {
+        // phone must begin with '+'
+        final numberProto = PhoneNumberUtil.instance.parse(number, '');
+        final countryCodeVal = numberProto.countryCode;
+        countryFromNumber = countries.where((a) => a.dialCode == countryCodeVal.toString()).firstOrNull;
+        if (countryFromNumber != null) {
+          _selectedCountry = countryFromNumber;
+          // remove country code from the initial number value
+          number = number.substring(1);
+          number = number.replaceFirst(RegExp("^${_selectedCountry.fullCountryCode}"), "");
+        }
+      } catch (_) {}
+    }
+    if (countryFromNumber == null) {
+      if (widget.initialCountryCode == null && number.startsWith('+')) {
+        number = number.substring(1);
+        // parse initial value
+        _selectedCountry = countries.firstWhere((country) => number.startsWith(country.fullCountryCode),
+            orElse: () => _countryList.first);
 
-      // remove country code from the initial number value
-      number = number.replaceFirst(RegExp("^${_selectedCountry.fullCountryCode}"), "");
-    } else {
-      _selectedCountry = _countryList.firstWhere((item) => item.code == (widget.initialCountryCode ?? 'US'),
-          orElse: () => _countryList.first);
-
-      // remove country code from the initial number value
-      if (number.startsWith('+')) {
-        number = number.replaceFirst(RegExp("^\\+${_selectedCountry.fullCountryCode}"), "");
-      } else {
+        // remove country code from the initial number value
         number = number.replaceFirst(RegExp("^${_selectedCountry.fullCountryCode}"), "");
+      } else {
+        _selectedCountry = _countryList.firstWhere((item) => item.code == (widget.initialCountryCode ?? 'US'),
+            orElse: () => _countryList.first);
+
+        // remove country code from the initial number value
+        if (number.startsWith('+')) {
+          number = number.replaceFirst(RegExp("^\\+${_selectedCountry.fullCountryCode}"), "");
+        } else {
+          number = number.replaceFirst(RegExp("^${_selectedCountry.fullCountryCode}"), "");
+        }
       }
     }
 
@@ -383,6 +405,43 @@ class _IntlPhoneFieldState extends State<IntlPhoneField> {
     if (mounted) setState(() {});
   }
 
+  static String _getCountryCodeFromNumber(String? number) {
+    var countryCode = '';
+    try {
+      // phone must begin with '+'
+      if (number != null && number.startsWith('+')) {
+        final numberProto = PhoneNumberUtil.instance.parse(number, '');
+        final countryCodeVal = numberProto.countryCode;
+        final country = countries.where((a) => a.dialCode == countryCodeVal.toString()).firstOrNull;
+        if (country != null) {
+          countryCode = country.code;
+        }
+      }
+    } catch (_) {}
+    return countryCode;
+  }
+
+  static bool _isPhoneNumberValid(String number, String countryCode) {
+    var result = false;
+    try {
+      final phoneUtil = PhoneNumberUtil.instance;
+      final phoneNumber = phoneUtil.parse(number, countryCode);
+      result = phoneUtil.isValidNumber(phoneNumber);
+    } catch (_) {}
+    return result;
+  }
+
+  static String _getValidNumber(String? number, String countryCode) {
+    final result = number ?? '';
+    try {
+      final phoneUtil = PhoneNumberUtil.instance;
+      final phoneNumber = phoneUtil.parse(number, countryCode);
+      if (phoneUtil.isValidNumber(phoneNumber) && phoneNumber.hasNationalNumber()) {
+        return phoneNumber.nationalNumber.toString();
+      }
+    } catch (_) {}
+    return result;
+  }
   @override
   Widget build(BuildContext context) {
     return TextFormField(
@@ -413,7 +472,7 @@ class _IntlPhoneFieldState extends State<IntlPhoneField> {
           PhoneNumber(
             countryISOCode: _selectedCountry.code,
             countryCode: '+${_selectedCountry.dialCode}${_selectedCountry.regionCode}',
-            number: value!,
+            number: _getValidNumber(value, _selectedCountry.code),
           ),
         );
       },
@@ -421,7 +480,7 @@ class _IntlPhoneFieldState extends State<IntlPhoneField> {
         final phoneNumber = PhoneNumber(
           countryISOCode: _selectedCountry.code,
           countryCode: '+${_selectedCountry.fullCountryCode}',
-          number: value,
+          number: _getValidNumber(value, _selectedCountry.code),
         );
 
         if (widget.autovalidateMode != AutovalidateMode.disabled) {
@@ -431,9 +490,17 @@ class _IntlPhoneFieldState extends State<IntlPhoneField> {
         widget.onChanged?.call(phoneNumber);
       },
       validator: (value) {
-        if (value == null || !isNumeric(value)) return validatorMessage;
+        if (value == null || value.isEmpty) return validatorMessage;
+        if (!isNumeric(value)) return widget.invalidNumberMessage;
         if (!widget.disableLengthCheck) {
-          if (value.length < _selectedCountry.minLength || value.length > _selectedCountry.maxLength) return widget.invalidNumberMessage;
+          if (value.length < _selectedCountry.minLength || value.length > _selectedCountry.maxLength) {
+            return widget.invalidNumberMessage;
+          }
+        }
+        if (!widget.disablePhoneNumberValidationCheck) {
+          if (value.isNotEmpty && !_isPhoneNumberValid(value, _selectedCountry.code)) {
+            return widget.invalidNumberMessage;
+          }
         }
 
         return validatorMessage;
